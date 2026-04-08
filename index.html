@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VR ガラス拭き + 足跡 + ジャンプ検出</title>
+<title>VR 窓ガラス拭き（完成版）</title>
 
 <style>
 body {
@@ -33,155 +33,114 @@ canvas {
 <body>
 
 <video id="video" autoplay playsinline></video>
-<canvas id="snow"></canvas>
 <canvas id="glass"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <script>
 // ===== 基本 =====
 const video = document.getElementById("video")
-const snow = document.getElementById("snow")
-const glass = document.getElementById("glass")
+const canvas = document.getElementById("glass")
+const ctx = canvas.getContext("2d")
 
-const stx = snow.getContext("2d")
-const gtx = glass.getContext("2d")
+let windowArea = {}
 
 function resize() {
-  snow.width = glass.width = window.innerWidth
-  snow.height = glass.height = window.innerHeight
+  canvas.width = window.innerWidth
+  canvas.height = window.innerHeight
 
-  stx.fillStyle = "white"
-  stx.fillRect(0,0,snow.width,snow.height)
+  // 窓サイズ（中央に配置）
+  windowArea = {
+    x: canvas.width * 0.2,
+    y: canvas.height * 0.15,
+    w: canvas.width * 0.6,
+    h: canvas.height * 0.7
+  }
 
-  gtx.fillStyle = "rgba(150,150,150,0.8)"
-  gtx.fillRect(0,0,glass.width,glass.height)
+  drawWindow()
 }
 window.addEventListener("resize", resize)
 
-// ===== ガラス拭き =====
+// ===== 窓描画 =====
+function drawWindow() {
+  ctx.clearRect(0,0,canvas.width,canvas.height)
+
+  // ガラス（青み）
+  ctx.fillStyle = "rgba(180,220,255,0.25)"
+  ctx.fillRect(windowArea.x, windowArea.y, windowArea.w, windowArea.h)
+
+  // 汚れ（ランダム斑点）
+  for (let i = 0; i < 200; i++) {
+    const x = windowArea.x + Math.random() * windowArea.w
+    const y = windowArea.y + Math.random() * windowArea.h
+    const r = Math.random() * 10
+
+    ctx.fillStyle = "rgba(120,120,120,0.15)"
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  // 反射（斜めグラデーション）
+  const grad = ctx.createLinearGradient(
+    windowArea.x, windowArea.y,
+    windowArea.x + windowArea.w, windowArea.y + windowArea.h
+  )
+  grad.addColorStop(0, "rgba(255,255,255,0.25)")
+  grad.addColorStop(0.5, "rgba(255,255,255,0.05)")
+  grad.addColorStop(1, "rgba(255,255,255,0)")
+
+  ctx.fillStyle = grad
+  ctx.fillRect(windowArea.x, windowArea.y, windowArea.w, windowArea.h)
+
+  // 枠
+  ctx.strokeStyle = "white"
+  ctx.lineWidth = 6
+  ctx.strokeRect(windowArea.x, windowArea.y, windowArea.w, windowArea.h)
+}
+
+// ===== 手検出 =====
 const hands = new Hands({
   locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
 })
 
-hands.setOptions({ maxNumHands:1 })
-
-hands.onResults(r => {
-  if (!r.multiHandLandmarks) return
-
-  for (const lm of r.multiHandLandmarks) {
-    const x = lm[8].x * glass.width
-    const y = lm[8].y * glass.height
-
-    gtx.globalCompositeOperation = "destination-out"
-    gtx.beginPath()
-    gtx.arc(x, y, 40, 0, Math.PI*2)
-    gtx.fill()
-  }
+hands.setOptions({
+  maxNumHands: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
 })
 
-// ===== 足跡 + ジャンプ =====
-const pose = new Pose({
-  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`
-})
+// ===== 拭き処理 =====
+hands.onResults(results => {
+  if (!results.multiHandLandmarks) return
 
-pose.setOptions({
-  minDetectionConfidence:0.6,
-  minTrackingConfidence:0.6
-})
+  for (const lm of results.multiHandLandmarks) {
+    const x = lm[8].x * canvas.width
+    const y = lm[8].y * canvas.height
 
-// 状態管理
-let lastLeft = null
-let lastRight = null
-let lastHipY = null
-let isJumping = false
-
-pose.onResults(r => {
-  if (!r.poseLandmarks) return
-  const lm = r.poseLandmarks
-
-  const left = lm[27]
-  const right = lm[28]
-  const hip = lm[24] // 腰
-
-  detectStep(left, "left")
-  detectStep(right, "right")
-  detectJump(hip)
-})
-
-// ===== 足跡（方向付き） =====
-function detectStep(foot, side) {
-  const x = foot.x * snow.width
-  const y = foot.y * snow.height
-
-  const prev = (side === "left") ? lastLeft : lastRight
-
-  if (prev) {
-    const dx = x - prev.x
-    const dy = y - prev.y
-    const dist = Math.sqrt(dx*dx + dy*dy)
-
-    if (dist > 20) { // 動いたら足跡
-      const angle = Math.atan2(dy, dx)
-      drawFoot(x, y, angle)
+    // 窓の中だけ
+    if (
+      x > windowArea.x &&
+      x < windowArea.x + windowArea.w &&
+      y > windowArea.y &&
+      y < windowArea.y + windowArea.h
+    ) {
+      ctx.globalCompositeOperation = "destination-out"
+      ctx.beginPath()
+      ctx.arc(x, y, 40, 0, Math.PI * 2)
+      ctx.fill()
     }
   }
-
-  if (side === "left") lastLeft = {x,y}
-  else lastRight = {x,y}
-}
-
-// 足跡描画
-function drawFoot(x, y, angle) {
-  stx.save()
-  stx.translate(x, y)
-  stx.rotate(angle)
-
-  stx.fillStyle = "rgba(180,180,180,0.7)"
-  stx.beginPath()
-  stx.ellipse(0, 0, 20, 10, 0, 0, Math.PI*2)
-  stx.fill()
-
-  // かかと
-  stx.beginPath()
-  stx.ellipse(-10, 0, 10, 8, 0, 0, Math.PI*2)
-  stx.fill()
-
-  stx.restore()
-}
-
-// ===== ジャンプ検出 =====
-function detectJump(hip) {
-  const y = hip.y
-
-  if (lastHipY !== null) {
-    const dy = lastHipY - y
-
-    // 急上昇 → ジャンプ開始
-    if (dy > 0.05 && !isJumping) {
-      isJumping = true
-      console.log("ジャンプ！")
-    }
-
-    // 戻ったら終了
-    if (isJumping && dy < -0.02) {
-      isJumping = false
-    }
-  }
-
-  lastHipY = y
-}
+})
 
 // ===== カメラ =====
 const camera = new Camera(video, {
   onFrame: async () => {
-    await hands.send({image: video})
-    await pose.send({image: video})
+    await hands.send({ image: video })
   },
-  width:1280,
-  height:720
+  width: 1280,
+  height: 720
 })
 
 camera.start()
