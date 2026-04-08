@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VR ガラス拭き + 足跡 + ジャンプ検出</title>
+
+<style>
+body {
+  margin: 0;
+  overflow: hidden;
+  background: black;
+}
+
+video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scaleX(-1);
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+</style>
+</head>
+
+<body>
+
+<video id="video" autoplay playsinline></video>
+<canvas id="snow"></canvas>
+<canvas id="glass"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+// ===== 基本 =====
+const video = document.getElementById("video")
+const snow = document.getElementById("snow")
+const glass = document.getElementById("glass")
+
+const stx = snow.getContext("2d")
+const gtx = glass.getContext("2d")
+
+function resize() {
+  snow.width = glass.width = window.innerWidth
+  snow.height = glass.height = window.innerHeight
+
+  stx.fillStyle = "white"
+  stx.fillRect(0,0,snow.width,snow.height)
+
+  gtx.fillStyle = "rgba(150,150,150,0.8)"
+  gtx.fillRect(0,0,glass.width,glass.height)
+}
+window.addEventListener("resize", resize)
+
+// ===== ガラス拭き =====
+const hands = new Hands({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+})
+
+hands.setOptions({ maxNumHands:1 })
+
+hands.onResults(r => {
+  if (!r.multiHandLandmarks) return
+
+  for (const lm of r.multiHandLandmarks) {
+    const x = lm[8].x * glass.width
+    const y = lm[8].y * glass.height
+
+    gtx.globalCompositeOperation = "destination-out"
+    gtx.beginPath()
+    gtx.arc(x, y, 40, 0, Math.PI*2)
+    gtx.fill()
+  }
+})
+
+// ===== 足跡 + ジャンプ =====
+const pose = new Pose({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`
+})
+
+pose.setOptions({
+  minDetectionConfidence:0.6,
+  minTrackingConfidence:0.6
+})
+
+// 状態管理
+let lastLeft = null
+let lastRight = null
+let lastHipY = null
+let isJumping = false
+
+pose.onResults(r => {
+  if (!r.poseLandmarks) return
+  const lm = r.poseLandmarks
+
+  const left = lm[27]
+  const right = lm[28]
+  const hip = lm[24] // 腰
+
+  detectStep(left, "left")
+  detectStep(right, "right")
+  detectJump(hip)
+})
+
+// ===== 足跡（方向付き） =====
+function detectStep(foot, side) {
+  const x = foot.x * snow.width
+  const y = foot.y * snow.height
+
+  const prev = (side === "left") ? lastLeft : lastRight
+
+  if (prev) {
+    const dx = x - prev.x
+    const dy = y - prev.y
+    const dist = Math.sqrt(dx*dx + dy*dy)
+
+    if (dist > 20) { // 動いたら足跡
+      const angle = Math.atan2(dy, dx)
+      drawFoot(x, y, angle)
+    }
+  }
+
+  if (side === "left") lastLeft = {x,y}
+  else lastRight = {x,y}
+}
+
+// 足跡描画
+function drawFoot(x, y, angle) {
+  stx.save()
+  stx.translate(x, y)
+  stx.rotate(angle)
+
+  stx.fillStyle = "rgba(180,180,180,0.7)"
+  stx.beginPath()
+  stx.ellipse(0, 0, 20, 10, 0, 0, Math.PI*2)
+  stx.fill()
+
+  // かかと
+  stx.beginPath()
+  stx.ellipse(-10, 0, 10, 8, 0, 0, Math.PI*2)
+  stx.fill()
+
+  stx.restore()
+}
+
+// ===== ジャンプ検出 =====
+function detectJump(hip) {
+  const y = hip.y
+
+  if (lastHipY !== null) {
+    const dy = lastHipY - y
+
+    // 急上昇 → ジャンプ開始
+    if (dy > 0.05 && !isJumping) {
+      isJumping = true
+      console.log("ジャンプ！")
+    }
+
+    // 戻ったら終了
+    if (isJumping && dy < -0.02) {
+      isJumping = false
+    }
+  }
+
+  lastHipY = y
+}
+
+// ===== カメラ =====
+const camera = new Camera(video, {
+  onFrame: async () => {
+    await hands.send({image: video})
+    await pose.send({image: video})
+  },
+  width:1280,
+  height:720
+})
+
+camera.start()
+resize()
+</script>
+
+</body>
+</html>
