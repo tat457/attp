@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ガラス拭き（手対応 完全版）</title>
+<title>ガラス拭き（向き修正版）</title>
 
 <style>
 body { margin:0; overflow:hidden; background:black; }
@@ -13,6 +13,7 @@ video {
   width:100%;
   height:100%;
   object-fit:cover;
+  /* 反転なし */
 }
 
 canvas {
@@ -31,7 +32,6 @@ canvas {
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
 
 <script>
-// ===== 要素 =====
 const video = document.getElementById("video")
 const canvas = document.getElementById("canvas")
 const ctx = canvas.getContext("2d")
@@ -39,22 +39,18 @@ const ctx = canvas.getContext("2d")
 canvas.width = window.innerWidth
 canvas.height = window.innerHeight
 
-// ===== カメラ（これが最重要） =====
+// カメラ
 navigator.mediaDevices.getUserMedia({ video: true })
 .then(stream => {
   video.srcObject = stream
   startHandTracking()
 })
-.catch(err => {
-  alert("カメラ許可が必要です")
-  console.error(err)
-})
 
-// ===== 汚れ =====
+// 汚れ
 ctx.fillStyle = "rgba(120,120,120,0.7)"
 ctx.fillRect(0,0,canvas.width,canvas.height)
 
-// ===== 拭き =====
+// 拭き
 function clean(x, y) {
   ctx.globalCompositeOperation = "destination-out"
   ctx.beginPath()
@@ -63,7 +59,7 @@ function clean(x, y) {
   ctx.globalCompositeOperation = "source-over"
 }
 
-// ===== 手検出 =====
+// 手検出
 function startHandTracking() {
 
   const hands = new Hands({
@@ -81,13 +77,15 @@ function startHandTracking() {
     if (!results.multiHandLandmarks) return
 
     for (const lm of results.multiHandLandmarks) {
+
+      // ★ 反転なし（そのまま）
       const x = lm[8].x * canvas.width
       const y = lm[8].y * canvas.height
+
       clean(x, y)
     }
   })
 
-  // ★ ここも重要：requestAnimationFrameで回す
   async function loop() {
     await hands.send({ image: video })
     requestAnimationFrame(loop)
