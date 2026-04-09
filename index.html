@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VR 窓ガラス拭き（完成版）</title>
+<title>VR ガラス拭き</title>
 
 <style>
 body {
@@ -12,16 +12,18 @@ body {
   background: black;
 }
 
+/* カメラ映像 */
 video {
   position: absolute;
   top: 0;
   left: 0;
-  transform: scaleX(-1);
+  transform: scaleX(-1); /* ミラー */
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
+/* 汚れレイヤー */
 canvas {
   position: absolute;
   top: 0;
@@ -33,76 +35,38 @@ canvas {
 <body>
 
 <video id="video" autoplay playsinline></video>
-<canvas id="glass"></canvas>
+<canvas id="canvas"></canvas>
 
+<!-- MediaPipe -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <script>
-// ===== 基本 =====
+// ===== 初期設定 =====
 const video = document.getElementById("video")
-const canvas = document.getElementById("glass")
+const canvas = document.getElementById("canvas")
 const ctx = canvas.getContext("2d")
 
-let windowArea = {}
-
+// サイズ調整
 function resize() {
   canvas.width = window.innerWidth
   canvas.height = window.innerHeight
 
-  // 窓サイズ（中央に配置）
-  windowArea = {
-    x: canvas.width * 0.2,
-    y: canvas.height * 0.15,
-    w: canvas.width * 0.6,
-    h: canvas.height * 0.7
-  }
-
-  drawWindow()
+  // 汚れを再描画
+  drawDirt()
 }
 window.addEventListener("resize", resize)
 
-// ===== 窓描画 =====
-function drawWindow() {
-  ctx.clearRect(0,0,canvas.width,canvas.height)
-
-  // ガラス（青み）
-  ctx.fillStyle = "rgba(180,220,255,0.25)"
-  ctx.fillRect(windowArea.x, windowArea.y, windowArea.w, windowArea.h)
-
-  // 汚れ（ランダム斑点）
-  for (let i = 0; i < 200; i++) {
-    const x = windowArea.x + Math.random() * windowArea.w
-    const y = windowArea.y + Math.random() * windowArea.h
-    const r = Math.random() * 10
-
-    ctx.fillStyle = "rgba(120,120,120,0.15)"
-    ctx.beginPath()
-    ctx.arc(x, y, r, 0, Math.PI * 2)
-    ctx.fill()
-  }
-
-  // 反射（斜めグラデーション）
-  const grad = ctx.createLinearGradient(
-    windowArea.x, windowArea.y,
-    windowArea.x + windowArea.w, windowArea.y + windowArea.h
-  )
-  grad.addColorStop(0, "rgba(255,255,255,0.25)")
-  grad.addColorStop(0.5, "rgba(255,255,255,0.05)")
-  grad.addColorStop(1, "rgba(255,255,255,0)")
-
-  ctx.fillStyle = grad
-  ctx.fillRect(windowArea.x, windowArea.y, windowArea.w, windowArea.h)
-
-  // 枠
-  ctx.strokeStyle = "white"
-  ctx.lineWidth = 6
-  ctx.strokeRect(windowArea.x, windowArea.y, windowArea.w, windowArea.h)
+// ===== 汚れ描画 =====
+function drawDirt() {
+  ctx.globalCompositeOperation = "source-over"
+  ctx.fillStyle = "rgba(120,120,120,0.8)"
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
 }
 
 // ===== 手検出 =====
 const hands = new Hands({
-  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
 })
 
 hands.setOptions({
@@ -111,30 +75,25 @@ hands.setOptions({
   minTrackingConfidence: 0.7
 })
 
-// ===== 拭き処理 =====
+// ===== 検出結果 =====
 hands.onResults(results => {
   if (!results.multiHandLandmarks) return
 
-  for (const lm of results.multiHandLandmarks) {
-    const x = lm[8].x * canvas.width
-    const y = lm[8].y * canvas.height
+  for (const landmarks of results.multiHandLandmarks) {
 
-    // 窓の中だけ
-    if (
-      x > windowArea.x &&
-      x < windowArea.x + windowArea.w &&
-      y > windowArea.y &&
-      y < windowArea.y + windowArea.h
-    ) {
-      ctx.globalCompositeOperation = "destination-out"
-      ctx.beginPath()
-      ctx.arc(x, y, 40, 0, Math.PI * 2)
-      ctx.fill()
-    }
+    // 人差し指先
+    const x = landmarks[8].x * canvas.width
+    const y = landmarks[8].y * canvas.height
+
+    // 消す（拭く）
+    ctx.globalCompositeOperation = "destination-out"
+    ctx.beginPath()
+    ctx.arc(x, y, 40, 0, Math.PI * 2)
+    ctx.fill()
   }
 })
 
-// ===== カメラ =====
+// ===== カメラ起動 =====
 const camera = new Camera(video, {
   onFrame: async () => {
     await hands.send({ image: video })
@@ -144,6 +103,8 @@ const camera = new Camera(video, {
 })
 
 camera.start()
+
+// 初期化
 resize()
 </script>
 
