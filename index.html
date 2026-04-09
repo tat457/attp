@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VR ガラス拭き</title>
+<title>VR ガラス拭き 完成版</title>
 
 <style>
 body {
@@ -12,18 +12,16 @@ body {
   background: black;
 }
 
-/* カメラ映像 */
 video {
   position: absolute;
   top: 0;
   left: 0;
-  transform: scaleX(-1); /* ミラー */
+  transform: scaleX(-1);
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-/* 汚れレイヤー */
 canvas {
   position: absolute;
   top: 0;
@@ -42,25 +40,24 @@ canvas {
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <script>
-// ===== 初期設定 =====
+// ===== 要素 =====
 const video = document.getElementById("video")
 const canvas = document.getElementById("canvas")
 const ctx = canvas.getContext("2d")
 
-// サイズ調整
+// ===== サイズ =====
 function resize() {
   canvas.width = window.innerWidth
   canvas.height = window.innerHeight
 
-  // 汚れを再描画
-  drawDirt()
+  drawDirt() // 初回だけ描画
 }
 window.addEventListener("resize", resize)
 
-// ===== 汚れ描画 =====
+// ===== 汚れ（1回だけ描く） =====
 function drawDirt() {
   ctx.globalCompositeOperation = "source-over"
-  ctx.fillStyle = "rgba(120,120,120,0.8)"
+  ctx.fillStyle = "rgba(120,120,120,0.7)"
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 }
 
@@ -75,25 +72,30 @@ hands.setOptions({
   minTrackingConfidence: 0.7
 })
 
-// ===== 検出結果 =====
+// ===== 拭き処理 =====
 hands.onResults(results => {
   if (!results.multiHandLandmarks) return
 
   for (const landmarks of results.multiHandLandmarks) {
 
-    // 人差し指先
     const x = landmarks[8].x * canvas.width
     const y = landmarks[8].y * canvas.height
 
-    // 消す（拭く）
+    // デバッグ（必要なら）
+    // console.log(x, y)
+
+    // 消す
     ctx.globalCompositeOperation = "destination-out"
     ctx.beginPath()
-    ctx.arc(x, y, 40, 0, Math.PI * 2)
+    ctx.arc(x, y, 50, 0, Math.PI * 2)
     ctx.fill()
+
+    // ★必ず戻す（超重要）
+    ctx.globalCompositeOperation = "source-over"
   }
 })
 
-// ===== カメラ起動 =====
+// ===== カメラ =====
 const camera = new Camera(video, {
   onFrame: async () => {
     await hands.send({ image: video })
