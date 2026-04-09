@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ガラス拭き（向き修正版）</title>
+<title>ガラス拭き（鏡モード切替）</title>
 
 <style>
 body { margin:0; overflow:hidden; background:black; }
@@ -13,7 +13,6 @@ video {
   width:100%;
   height:100%;
   object-fit:cover;
-  /* 反転なし */
 }
 
 canvas {
@@ -21,10 +20,26 @@ canvas {
   top:0;
   left:0;
 }
+
+/* ボタン */
+#toggleBtn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 10;
+  padding: 10px 15px;
+  font-size: 16px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border: 1px solid white;
+  border-radius: 8px;
+}
 </style>
 </head>
 
 <body>
+
+<button id="toggleBtn">鏡モード: OFF</button>
 
 <video id="video" autoplay playsinline muted></video>
 <canvas id="canvas"></canvas>
@@ -35,22 +50,37 @@ canvas {
 const video = document.getElementById("video")
 const canvas = document.getElementById("canvas")
 const ctx = canvas.getContext("2d")
+const btn = document.getElementById("toggleBtn")
 
 canvas.width = window.innerWidth
 canvas.height = window.innerHeight
 
-// カメラ
+// ===== 鏡モード状態 =====
+let mirrorMode = false
+
+btn.onclick = () => {
+  mirrorMode = !mirrorMode
+  btn.textContent = "鏡モード: " + (mirrorMode ? "ON" : "OFF")
+
+  // 映像の反転
+  video.style.transform = mirrorMode ? "scaleX(-1)" : "scaleX(1)"
+}
+
+// ===== カメラ =====
 navigator.mediaDevices.getUserMedia({ video: true })
 .then(stream => {
   video.srcObject = stream
   startHandTracking()
 })
+.catch(() => {
+  alert("カメラ許可が必要です")
+})
 
-// 汚れ
+// ===== 汚れ =====
 ctx.fillStyle = "rgba(120,120,120,0.7)"
 ctx.fillRect(0,0,canvas.width,canvas.height)
 
-// 拭き
+// ===== 拭き =====
 function clean(x, y) {
   ctx.globalCompositeOperation = "destination-out"
   ctx.beginPath()
@@ -59,7 +89,7 @@ function clean(x, y) {
   ctx.globalCompositeOperation = "source-over"
 }
 
-// 手検出
+// ===== 手検出 =====
 function startHandTracking() {
 
   const hands = new Hands({
@@ -78,11 +108,15 @@ function startHandTracking() {
 
     for (const lm of results.multiHandLandmarks) {
 
-      // ★ 反転なし（そのまま）
-      const x = lm[8].x * canvas.width
-      const y = lm[8].y * canvas.height
+      let x = lm[8].x
+      let y = lm[8].y
 
-      clean(x, y)
+      // ★ 鏡モード時は座標反転
+      if (mirrorMode) {
+        x = 1 - x
+      }
+
+      clean(x * canvas.width, y * canvas.height)
     }
   })
 
