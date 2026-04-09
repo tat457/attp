@@ -1,36 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ガラス拭き（手対応 完全版）</title>
+
+<style>
+body { margin:0; overflow:hidden; background:black; }
+
+video {
+  position:absolute;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+canvas {
+  position:absolute;
+  top:0;
+  left:0;
+}
+</style>
+</head>
+
+<body>
+
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <script>
-const hands = new Hands({
-  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+// ===== 要素 =====
+const video = document.getElementById("video")
+const canvas = document.getElementById("canvas")
+const ctx = canvas.getContext("2d")
+
+canvas.width = window.innerWidth
+canvas.height = window.innerHeight
+
+// ===== カメラ（これが最重要） =====
+navigator.mediaDevices.getUserMedia({ video: true })
+.then(stream => {
+  video.srcObject = stream
+  startHandTracking()
+})
+.catch(err => {
+  alert("カメラ許可が必要です")
+  console.error(err)
 })
 
-hands.setOptions({
-  maxNumHands: 1,
-  modelComplexity: 0, // 軽量化
-  minDetectionConfidence: 0.5,
-  minTrackingConfidence: 0.5
-})
+// ===== 汚れ =====
+ctx.fillStyle = "rgba(120,120,120,0.7)"
+ctx.fillRect(0,0,canvas.width,canvas.height)
 
-hands.onResults(results => {
-  if (!results.multiHandLandmarks) return
+// ===== 拭き =====
+function clean(x, y) {
+  ctx.globalCompositeOperation = "destination-out"
+  ctx.beginPath()
+  ctx.arc(x, y, 50, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.globalCompositeOperation = "source-over"
+}
 
-  for (const lm of results.multiHandLandmarks) {
-    const x = lm[8].x * canvas.width
-    const y = lm[8].y * canvas.height
-    clean(x, y)
-  }
-})
+// ===== 手検出 =====
+function startHandTracking() {
 
-// カメラ
-const camera = new Camera(video, {
-  onFrame: async () => {
+  const hands = new Hands({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+  })
+
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 0,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  })
+
+  hands.onResults(results => {
+    if (!results.multiHandLandmarks) return
+
+    for (const lm of results.multiHandLandmarks) {
+      const x = lm[8].x * canvas.width
+      const y = lm[8].y * canvas.height
+      clean(x, y)
+    }
+  })
+
+  // ★ ここも重要：requestAnimationFrameで回す
+  async function loop() {
     await hands.send({ image: video })
-  },
-  width: 640,
-  height: 480
-})
-
-camera.start()
+    requestAnimationFrame(loop)
+  }
+  loop()
+}
 </script>
+
+</body>
+</html>
