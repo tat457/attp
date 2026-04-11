@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>3ゲーム 改良版</title>
+<title>MediaPipe 動作確認</title>
 
 <style>
 body { margin:0; overflow:hidden; background:black; }
@@ -20,33 +20,123 @@ canvas {
   position:absolute;
   top:0; left:0;
 }
-
-#ui {
-  position:absolute;
-  z-index:10;
-  top:10px; left:10px;
-}
-button { padding:12px; margin:5px; font-size:16px; }
-#info { color:white; font-size:18px; }
 </style>
 </head>
 
 <body>
 
-<div id="ui">
-  <button onclick="startCamera()">▶ カメラ開始</button><br>
-  <button onclick="startGame(1)">①拭き</button>
-  <button onclick="startGame(2)">②足踏み</button>
-  <button onclick="startGame(3)">③ジャンプ</button>
-  <div id="info"></div>
-</div>
+<button id="startBtn" style="position:absolute;z-index:10;">
+▶ カメラ開始
+</button>
 
-<video id="video" autoplay playsinline muted></video>
+<video id="video" playsinline muted></video>
 <canvas id="canvas"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-<script src="game.js"></script>
+
+<script>
+const video = document.getElementById("video")
+const canvas = document.getElementById("canvas")
+const ctx = canvas.getContext("2d")
+const btn = document.getElementById("startBtn")
+
+canvas.width = window.innerWidth
+canvas.height = window.innerHeight
+
+let started = false
+
+// ===== カメラ開始（iPhone必須）=====
+btn.onclick = async () => {
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode:"user", width:640, height:480 },
+    audio:false
+  })
+
+  video.srcObject = stream
+  await video.play()
+
+  video.onloadeddata = () => {
+    if(!started){
+      started = true
+      init()
+    }
+  }
+}
+
+// ===== MediaPipe初期化 =====
+function init(){
+
+  console.log("MediaPipe 初期化開始")
+
+  const hands = new Hands({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+  })
+
+  const pose = new Pose({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`
+  })
+
+  hands.setOptions({
+    maxNumHands:1,
+    minDetectionConfidence:0.5,
+    minTrackingConfidence:0.5
+  })
+
+  pose.setOptions({
+    minDetectionConfidence:0.5,
+    minTrackingConfidence:0.5
+  })
+
+  // ===== 手検出 =====
+  hands.onResults(r=>{
+    if(!r.multiHandLandmarks) return
+
+    console.log("手検出 OK")
+
+    for(const hand of r.multiHandLandmarks){
+      for(const p of hand){
+        const x = (1-p.x)*canvas.width
+        const y = p.y*canvas.height
+
+        ctx.fillStyle="red"
+        ctx.fillRect(x,y,5,5)
+      }
+    }
+  })
+
+  // ===== 体検出 =====
+  pose.onResults(r=>{
+    if(!r.poseLandmarks) return
+
+    console.log("体検出 OK")
+
+    for(const p of r.poseLandmarks){
+      const x = (1-p.x)*canvas.width
+      const y = p.y*canvas.height
+
+      ctx.fillStyle="lime"
+      ctx.fillRect(x,y,5,5)
+    }
+  })
+
+  // ===== ループ =====
+  async function loop(){
+
+    ctx.clearRect(0,0,canvas.width,canvas.height)
+
+    if(video.readyState === 4){
+      await hands.send({image:video})
+      await pose.send({image:video})
+    }
+
+    requestAnimationFrame(loop)
+  }
+
+  loop()
+}
+</script>
 
 </body>
 </html>
