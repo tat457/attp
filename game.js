@@ -6,42 +6,43 @@ const info = document.getElementById("info")
 canvas.width = window.innerWidth
 canvas.height = window.innerHeight
 
-let mode = 0
-let count = 0
-let started = false
+let mode=0, count=0, started=false
 
-let footUp = false
-let jumpUp = false
+// ===== 状態管理 =====
+let prevX=null, prevY=null
 
-// ===== カメラ（iPhone完全対応）=====
+let footUp=false
+let prevFootY=null
+
+let jumpState="ground" // ground → crouch → jump
+let baseHipY=null
+
+// ===== カメラ =====
 window.startCamera = async function(){
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user", width:640, height:480 },
-      audio: false
-    })
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video:{facingMode:"user", width:640, height:480}
+  })
+  video.srcObject = stream
+  await video.play()
 
-    video.srcObject = stream
-    await video.play()
-
-    video.onloadeddata = () => {
-      if(!started){
-        started = true
-        init()
-      }
+  video.onloadeddata = ()=>{
+    if(!started){
+      started=true
+      init()
     }
-
-  }catch(e){
-    alert("カメラ許可してください")
-    console.error(e)
   }
 }
 
 // ===== ゲーム開始 =====
 window.startGame = function(m){
-  mode = m
-  count = 0
+  mode=m
+  count=0
   ctx.clearRect(0,0,canvas.width,canvas.height)
+
+  prevX=null
+  prevY=null
+  prevFootY=null
+  jumpState="ground"
 
   if(m===1){
     ctx.fillStyle="rgba(120,120,120,0.7)"
@@ -74,21 +75,8 @@ const hands = new Hands({
   locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
 })
 
-hands.setOptions({
-  maxNumHands:1,
-  modelComplexity:0,
-  minDetectionConfidence:0.5,
-  minTrackingConfidence:0.5
-})
-
 const pose = new Pose({
   locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`
-})
-
-pose.setOptions({
-  modelComplexity:0,
-  minDetectionConfidence:0.5,
-  minTrackingConfidence:0.5
 })
 
 // ===== 手 =====
@@ -96,14 +84,25 @@ hands.onResults(r=>{
   if(mode!==1) return
   if(!r.multiHandLandmarks) return
 
-  count++
-  info.textContent=`拭き:${count}/100`
+  const lm = r.multiHandLandmarks[0][8]
+  const x = (1-lm.x)*canvas.width
+  const y = lm.y*canvas.height
 
-  for(const lm of r.multiHandLandmarks){
-    const x = (1 - lm[8].x) * canvas.width
-    const y = lm[8].y * canvas.height
-    clean(x,y)
+  // ★動いたときだけカウント
+  if(prevX!==null){
+    const dx = x - prevX
+    const dy = y - prevY
+    const dist = Math.sqrt(dx*dx + dy*dy)
+
+    if(dist > 30){ // ←重要
+      count++
+      info.textContent=`拭き:${count}/100`
+      clean(x,y)
+    }
   }
+
+  prevX=x
+  prevY=y
 
   if(count>=100){
     ctx.clearRect(0,0,canvas.width,canvas.height)
@@ -118,33 +117,52 @@ pose.onResults(r=>{
   const foot = r.poseLandmarks[27]
   const hip  = r.poseLandmarks[24]
 
-  // 足踏み
+  // ===== 足踏み =====
   if(mode===2){
-    if(foot.y < 0.6 && !footUp) footUp = true
-    if(foot.y > 0.7 && footUp){
-      footUp = false
-      count++
-      info.textContent=`足踏み:${count}/100`
+    if(prevFootY!==null){
+      const dy = foot.y - prevFootY
 
-      const x = (1 - foot.x) * canvas.width
-      const y = foot.y * canvas.height
-      ctx.fillStyle="gray"
-      ctx.beginPath()
-      ctx.arc(x,y,10,0,Math.PI*2)
-      ctx.fill()
+      if(dy < -0.05) footUp=true
+
+      if(dy > 0.05 && footUp){
+        footUp=false
+        count++
+        info.textContent=`足踏み:${count}/100`
+
+        const x=(1-foot.x)*canvas.width
+        const y=foot.y*canvas.height
+
+        ctx.fillStyle="gray"
+        ctx.beginPath()
+        ctx.arc(x,y,10,0,Math.PI*2)
+        ctx.fill()
+      }
     }
+    prevFootY = foot.y
   }
 
-  // ジャンプ
+  // ===== ジャンプ =====
   if(mode===3){
-    if(hip.y < 0.4 && !jumpUp) jumpUp = true
-    if(hip.y > 0.5 && jumpUp){
-      jumpUp = false
+
+    if(baseHipY===null) baseHipY = hip.y
+
+    const diff = baseHipY - hip.y
+
+    if(jumpState==="ground" && diff < -0.05){
+      jumpState="crouch"
+    }
+
+    if(jumpState==="crouch" && diff > 0.08){
+      jumpState="jump"
       count++
       info.textContent=`ジャンプ:${count}/50`
 
       ctx.fillStyle="white"
-      ctx.fillRect(0, canvas.height - count*5, canvas.width, 5)
+      ctx.fillRect(0,canvas.height-count*5,canvas.width,5)
+    }
+
+    if(jumpState==="jump" && Math.abs(diff) < 0.02){
+      jumpState="ground"
     }
   }
 })
