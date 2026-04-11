@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>3ゲーム iPhone対応</title>
+<title>3ゲーム完全版</title>
 
 <style>
 body { margin:0; overflow:hidden; background:black; }
@@ -13,7 +13,7 @@ video {
   width:100%;
   height:100%;
   object-fit:cover;
-  transform: scaleX(-1);
+  transform: scaleX(-1); /* 鏡 */
 }
 
 canvas {
@@ -26,8 +26,15 @@ canvas {
   z-index:10;
   top:10px; left:10px;
 }
-button { padding:12px; margin:5px; font-size:16px; }
-#info { color:white; font-size:18px; }
+button {
+  padding:12px;
+  margin:5px;
+  font-size:16px;
+}
+#info {
+  color:white;
+  font-size:18px;
+}
 </style>
 </head>
 
@@ -41,13 +48,11 @@ button { padding:12px; margin:5px; font-size:16px; }
   <div id="info"></div>
 </div>
 
-<video id="video" playsinline muted></video>
+<video id="video" autoplay playsinline muted></video>
 <canvas id="canvas"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-
-<!-- ★ここが重要 -->
 <script src="game.js"></script>
 
 </body>
