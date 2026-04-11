@@ -3,125 +3,187 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ガラス拭き（鏡モード切替）</title>
+<title>3つの動作ゲーム</title>
 
 <style>
 body { margin:0; overflow:hidden; background:black; }
-
-video {
+video, canvas {
   position:absolute;
   width:100%;
   height:100%;
   object-fit:cover;
 }
-
-canvas {
+#ui {
   position:absolute;
-  top:0;
-  left:0;
+  top:10px; left:10px;
+  z-index:10;
 }
-
-/* ボタン */
-#toggleBtn {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  z-index: 10;
-  padding: 10px 15px;
-  font-size: 16px;
-  background: rgba(0,0,0,0.6);
-  color: white;
-  border: 1px solid white;
-  border-radius: 8px;
+button {
+  margin:5px;
+  padding:10px;
+}
+#info {
+  color:white;
+  font-size:18px;
 }
 </style>
 </head>
 
 <body>
 
-<button id="toggleBtn">鏡モード: OFF</button>
+<div id="ui">
+  <button onclick="startGame(1)">①拭きゲーム</button>
+  <button onclick="startGame(2)">②足踏み</button>
+  <button onclick="startGame(3)">③ジャンプ</button>
+  <div id="info"></div>
+</div>
 
 <video id="video" autoplay playsinline muted></video>
 <canvas id="canvas"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
 
 <script>
+// ===== 基本 =====
 const video = document.getElementById("video")
 const canvas = document.getElementById("canvas")
 const ctx = canvas.getContext("2d")
-const btn = document.getElementById("toggleBtn")
+const info = document.getElementById("info")
 
 canvas.width = window.innerWidth
 canvas.height = window.innerHeight
 
-// ===== 鏡モード状態 =====
-let mirrorMode = false
-
-btn.onclick = () => {
-  mirrorMode = !mirrorMode
-  btn.textContent = "鏡モード: " + (mirrorMode ? "ON" : "OFF")
-
-  // 映像の反転
-  video.style.transform = mirrorMode ? "scaleX(-1)" : "scaleX(1)"
-}
-
 // ===== カメラ =====
-navigator.mediaDevices.getUserMedia({ video: true })
-.then(stream => {
+navigator.mediaDevices.getUserMedia({ video:true })
+.then(stream=>{
   video.srcObject = stream
-  startHandTracking()
-})
-.catch(() => {
-  alert("カメラ許可が必要です")
+  init()
 })
 
-// ===== 汚れ =====
-ctx.fillStyle = "rgba(120,120,120,0.7)"
-ctx.fillRect(0,0,canvas.width,canvas.height)
+// ===== 状態 =====
+let mode = 0
+let count = 0
+
+// ===== ゲーム開始 =====
+function startGame(m){
+  mode = m
+  count = 0
+  ctx.clearRect(0,0,canvas.width,canvas.height)
+
+  if(mode===1){
+    ctx.fillStyle="rgba(120,120,120,0.7)"
+    ctx.fillRect(0,0,canvas.width,canvas.height)
+    info.textContent="拭いた回数: 0 / 100"
+  }
+  if(mode===2){
+    ctx.fillStyle="white"
+    ctx.fillRect(0,0,canvas.width,canvas.height)
+    info.textContent="足踏み: 0 / 100"
+  }
+  if(mode===3){
+    info.textContent="ジャンプ: 0 / 50"
+  }
+}
 
 // ===== 拭き =====
-function clean(x, y) {
-  ctx.globalCompositeOperation = "destination-out"
+function clean(x,y){
+  ctx.globalCompositeOperation="destination-out"
   ctx.beginPath()
-  ctx.arc(x, y, 50, 0, Math.PI * 2)
+  ctx.arc(x,y,40,0,Math.PI*2)
   ctx.fill()
-  ctx.globalCompositeOperation = "source-over"
+  ctx.globalCompositeOperation="source-over"
 }
 
-// ===== 手検出 =====
-function startHandTracking() {
+// ===== 初期化 =====
+function init(){
 
+  // --- 手 ---
   const hands = new Hands({
-    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+    locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
   })
+  hands.setOptions({maxNumHands:1})
 
-  hands.setOptions({
-    maxNumHands: 1,
-    modelComplexity: 0,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
-  })
+  hands.onResults(r=>{
+    if(mode!==1) return
+    if(!r.multiHandLandmarks) return
 
-  hands.onResults(results => {
-    if (!results.multiHandLandmarks) return
+    count++
+    info.textContent=`拭いた回数: ${count} / 100`
 
-    for (const lm of results.multiHandLandmarks) {
+    for(const lm of r.multiHandLandmarks){
+      clean(lm[8].x*canvas.width, lm[8].y*canvas.height)
+    }
 
-      let x = lm[8].x
-      let y = lm[8].y
-
-      // ★ 鏡モード時は座標反転
-      if (mirrorMode) {
-        x = 1 - x
-      }
-
-      clean(x * canvas.width, y * canvas.height)
+    if(count>=100){
+      ctx.clearRect(0,0,canvas.width,canvas.height)
+      info.textContent="クリア！"
     }
   })
 
-  async function loop() {
-    await hands.send({ image: video })
+  // --- 姿勢 ---
+  const pose = new Pose({
+    locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`
+  })
+  pose.setOptions({minDetectionConfidence:0.5})
+
+  let lastFootY = null
+  let lastHipY = null
+
+  pose.onResults(r=>{
+    if(!r.poseLandmarks) return
+
+    const foot = r.poseLandmarks[27]
+    const hip = r.poseLandmarks[24]
+
+    // ===== 足踏み =====
+    if(mode===2){
+      if(lastFootY!==null){
+        if(Math.abs(foot.y - lastFootY) > 0.05){
+          count++
+          info.textContent=`足踏み: ${count} / 100`
+
+          // 足跡
+          const x = foot.x * canvas.width
+          const y = foot.y * canvas.height
+          ctx.fillStyle="gray"
+          ctx.beginPath()
+          ctx.arc(x,y,10,0,Math.PI*2)
+          ctx.fill()
+        }
+      }
+      lastFootY = foot.y
+
+      if(count>=100){
+        info.textContent="一面足跡！クリア！"
+      }
+    }
+
+    // ===== ジャンプ =====
+    if(mode===3){
+      if(lastHipY!==null){
+        const dy = lastHipY - hip.y
+        if(dy > 0.05){
+          count++
+          info.textContent=`ジャンプ: ${count} / 50`
+
+          // 階段
+          ctx.fillStyle="white"
+          ctx.fillRect(0, canvas.height - count*5, canvas.width, 5)
+        }
+      }
+      lastHipY = hip.y
+
+      if(count>=50){
+        info.textContent="頂上到達！クリア！"
+      }
+    }
+  })
+
+  // ===== ループ =====
+  async function loop(){
+    await hands.send({image:video})
+    await pose.send({image:video})
     requestAnimationFrame(loop)
   }
   loop()
