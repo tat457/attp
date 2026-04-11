@@ -7,18 +7,30 @@ const info = document.getElementById("info")
 canvas.width = window.innerWidth
 canvas.height = window.innerHeight
 
-// ===== カメラ（軽量化） =====
-navigator.mediaDevices.getUserMedia({
-  video: { width: 640, height: 480 }
-}).then(stream=>{
-  video.srcObject = stream
-  init()
-})
-
-// ===== 状態 =====
 let mode=0, count=0
 let footUp=false, jumpUp=false
+let started=false
 
+// ===== カメラ =====
+window.startCamera = function(){
+  navigator.mediaDevices.getUserMedia({
+    video: { width:640, height:480 }
+  }).then(stream=>{
+    video.srcObject = stream
+    video.play()
+
+    video.onloadeddata = () => {
+      if(!started){
+        started = true
+        init()
+      }
+    }
+  }).catch(()=>{
+    alert("カメラ許可してください")
+  })
+}
+
+// ===== ゲーム開始 =====
 window.startGame = function(m){
   mode=m
   count=0
@@ -51,27 +63,28 @@ function clean(x,y){
 // ===== 初期化 =====
 function init(){
 
-// ---- 手 ----
 const hands = new Hands({
   locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
 })
 
 hands.setOptions({
   maxNumHands:1,
-  minDetectionConfidence:0.3,
-  minTrackingConfidence:0.3
+  modelComplexity:0,
+  minDetectionConfidence:0.5,
+  minTrackingConfidence:0.5
 })
 
-// ---- 姿勢 ----
 const pose = new Pose({
   locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`
 })
 
 pose.setOptions({
-  minDetectionConfidence:0.3,
-  minTrackingConfidence:0.3
+  modelComplexity:0,
+  minDetectionConfidence:0.5,
+  minTrackingConfidence:0.5
 })
 
+// ===== 手 =====
 hands.onResults(r=>{
   if(mode!==1) return
   if(!r.multiHandLandmarks) return
@@ -82,12 +95,7 @@ hands.onResults(r=>{
   for(const lm of r.multiHandLandmarks){
     const x=(1-lm[8].x)*canvas.width
     const y=lm[8].y*canvas.height
-
     clean(x,y)
-
-    // デバッグ点
-    ctx.fillStyle="red"
-    ctx.fillRect(x,y,5,5)
   }
 
   if(count>=100){
@@ -96,6 +104,7 @@ hands.onResults(r=>{
   }
 })
 
+// ===== 姿勢 =====
 pose.onResults(r=>{
   if(!r.poseLandmarks) return
 
@@ -113,7 +122,9 @@ pose.onResults(r=>{
       const x=(1-foot.x)*canvas.width
       const y=foot.y*canvas.height
       ctx.fillStyle="gray"
-      ctx.fillRect(x,y,10,10)
+      ctx.beginPath()
+      ctx.arc(x,y,10,0,Math.PI*2)
+      ctx.fill()
     }
   }
 
@@ -131,13 +142,20 @@ pose.onResults(r=>{
   }
 })
 
-// ★負荷軽減（超重要）
+// ===== ループ =====
 async function loop(){
+
+  if(video.readyState !== 4){
+    requestAnimationFrame(loop)
+    return
+  }
+
   if(mode===1){
     await hands.send({image:video})
   } else {
     await pose.send({image:video})
   }
+
   requestAnimationFrame(loop)
 }
 loop()
