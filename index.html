@@ -1,223 +1,86 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>3つの動作ゲーム</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ウォームアップゲーム3種</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <p class="eyebrow">Warm Up Games</p>
+          <h1>動いて遊べる<br />3つの運動ゲーム</h1>
+          <p class="lead">
+            カメラで体の動きを検出して、窓ふき・足踏み・ジャンプをゲームにします。
+          </p>
+        </div>
 
-<style>
-body { margin:0; overflow:hidden; background:black; }
+        <section class="panel">
+          <h2>ゲームを選ぶ</h2>
+          <div class="game-buttons">
+            <button class="game-button active" data-game="wipe">
+              1. 窓ふき
+              <span>手のひらを動かして窓をピカピカにする</span>
+            </button>
+            <button class="game-button" data-game="step">
+              2. 足踏み
+              <span>膝を上げて雪の上を足跡でいっぱいにする</span>
+            </button>
+            <button class="game-button" data-game="jump">
+              3. ジャンプ
+              <span>踵の動きで階段を登って頂上を目指す</span>
+            </button>
+          </div>
+        </section>
 
-video {
-  position:absolute;
-  width:100%;
-  height:100%;
-  object-fit:cover;
-}
+        <section class="panel stats">
+          <div>
+            <p class="label">現在のゲーム</p>
+            <p id="gameTitle" class="value">窓ふきゲーム</p>
+          </div>
+          <div>
+            <p class="label">カウント</p>
+            <p class="value"><span id="countValue">0</span> / 50</p>
+          </div>
+          <div>
+            <p class="label">検出部位</p>
+            <p id="trackingTarget" class="value">手のひら</p>
+          </div>
+          <div>
+            <p class="label">状態</p>
+            <p id="statusText" class="value">カメラを準備しています…</p>
+          </div>
+        </section>
 
-canvas {
-  position:absolute;
-  top:0;
-  left:0;
-}
+        <section class="panel controls">
+          <button id="resetButton" class="secondary-button">このゲームをリセット</button>
+          <p class="hint">
+            動きが認識されにくい時は、全身または上半身がカメラに入る距離に調整してください。
+          </p>
+        </section>
+      </aside>
 
-#ui {
-  position:absolute;
-  top:10px;
-  left:10px;
-  z-index:10;
-}
-
-button {
-  padding:10px;
-  margin:5px;
-}
-
-#score {
-  color:white;
-  font-size:20px;
-}
-</style>
-</head>
-
-<body>
-
-<div id="ui">
-  <button onclick="startGame(1)">① 窓拭き</button>
-  <button onclick="startGame(2)">② 足踏み</button>
-  <button onclick="startGame(3)">③ ジャンプ</button>
-  <div id="score">0 / 50</div>
-</div>
-
-<video id="video" autoplay playsinline muted></video>
-<canvas id="canvas"></canvas>
-
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.min.js"></script>
-
-<script>
-const video = document.getElementById("video")
-const canvas = document.getElementById("canvas")
-const ctx = canvas.getContext("2d")
-const scoreEl = document.getElementById("score")
-
-canvas.width = window.innerWidth
-canvas.height = window.innerHeight
-
-let gameMode = 0
-let count = 0
-
-function startGame(mode){
-  gameMode = mode
-  count = 0
-  scoreEl.textContent = "0 / 50"
-  ctx.clearRect(0,0,canvas.width,canvas.height)
-
-  if(mode === 1){
-    ctx.fillStyle = "rgba(120,120,120,0.7)"
-    ctx.fillRect(0,0,canvas.width,canvas.height)
-  }
-}
-
-// ===== カメラ =====
-navigator.mediaDevices.getUserMedia({ video:true })
-.then(stream=>{
-  video.srcObject = stream
-  startTracking()
-})
-
-// ===== 検出 =====
-const hands = new Hands({
-  locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
-})
-
-hands.setOptions({
-  maxNumHands:1,
-  modelComplexity:0,
-  minDetectionConfidence:0.5,
-  minTrackingConfidence:0.5
-})
-
-const pose = new Pose({
-  locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`
-})
-
-pose.setOptions({
-  modelComplexity:0,
-  smoothLandmarks:true,
-  minDetectionConfidence:0.5,
-  minTrackingConfidence:0.5
-})
-
-// ===== 状態管理 =====
-let lastPalmX = null
-let lastKneeY = null
-let lastHeelY = null
-
-// ===== 手（窓拭き）=====
-hands.onResults(r=>{
-  if(gameMode !== 1) return
-  if(!r.multiHandLandmarks) return
-
-  const lm = r.multiHandLandmarks[0]
-
-  // 手のひら中心（0,5,9,13,17平均）
-  const px = (lm[0].x + lm[5].x + lm[9].x + lm[13].x + lm[17].x)/5
-  const py = (lm[0].y + lm[5].y + lm[9].y + lm[13].y + lm[17].y)/5
-
-  const x = px * canvas.width
-  const y = py * canvas.height
-
-  if(lastPalmX !== null){
-    const dx = Math.abs(x - lastPalmX)
-    if(dx > 15){ // 横に動いたら1回
-      count++
-      drawClean(x,y)
-    }
-  }
-
-  lastPalmX = x
-})
-
-// ===== 膝（足踏み）=====
-pose.onResults(r=>{
-  if(!r.poseLandmarks) return
-  const lm = r.poseLandmarks
-
-  if(gameMode === 2){
-    const kneeY = (lm[25].y + lm[26].y)/2
-
-    if(lastKneeY !== null){
-      if(Math.abs(kneeY - lastKneeY) > 0.03){
-        count++
-        drawFootprint()
-      }
-    }
-    lastKneeY = kneeY
-  }
-
-  // ===== 踵（ジャンプ）=====
-  if(gameMode === 3){
-    const heelY = (lm[29].y + lm[30].y)/2
-
-    if(lastHeelY !== null){
-      if(lastHeelY - heelY > 0.05){ // 上に動いた
-        count++
-        drawStep()
-      }
-    }
-    lastHeelY = heelY
-  }
-
-  updateScore()
-})
-
-// ===== 描画 =====
-function drawClean(x,y){
-  ctx.globalCompositeOperation="destination-out"
-  ctx.beginPath()
-  ctx.arc(x,y,40,0,Math.PI*2)
-  ctx.fill()
-  ctx.globalCompositeOperation="source-over"
-}
-
-function drawFootprint(){
-  const x = Math.random()*canvas.width
-  const y = Math.random()*canvas.height
-  ctx.fillStyle="rgba(200,200,200,0.6)"
-  ctx.beginPath()
-  ctx.arc(x,y,20,0,Math.PI*2)
-  ctx.fill()
-}
-
-let stepY = canvas.height
-
-function drawStep(){
-  ctx.fillStyle="white"
-  ctx.fillRect(canvas.width/2 - 50, stepY, 100, 10)
-  stepY -= 10
-}
-
-// ===== スコア =====
-function updateScore(){
-  scoreEl.textContent = count + " / 50"
-
-  if(count >= 50){
-    alert("クリア！")
-    gameMode = 0
-  }
-}
-
-// ===== ループ =====
-async function startTracking(){
-  async function loop(){
-    await hands.send({image:video})
-    await pose.send({image:video})
-    requestAnimationFrame(loop)
-  }
-  loop()
-}
-</script>
-
-</body>
+      <main class="stage">
+        <div class="canvas-wrap">
+          <video id="inputVideo" playsinline></video>
+          <canvas id="outputCanvas" width="960" height="720"></canvas>
+          <div class="hud">
+            <div class="progress-card">
+              <span id="hudTitle">窓ふきゲーム</span>
+              <strong id="hudCount">0 / 50</strong>
+            </div>
+            <div class="progress-track">
+              <div id="progressBar" class="progress-fill"></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </body>
 </html>
