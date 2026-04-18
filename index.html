@@ -59,6 +59,7 @@
         </section>
 
         <section class="panel controls">
+          <button id="startButton" class="primary-button">スタート</button>
           <button id="resetButton" class="secondary-button">このゲームをリセット</button>
           <p class="hint">
             動きが認識されにくい時は、全身または上半身がカメラに入る距離に調整してください。
@@ -69,6 +70,7 @@
       <main class="stage">
         <div class="canvas-wrap">
           <video id="inputVideo" playsinline></video>
+          <audio id="bgmAudio" src="./fitnes.mp3" preload="auto" loop></audio>
           <canvas id="outputCanvas" width="960" height="720"></canvas>
           <div class="hud">
             <div class="progress-card">
