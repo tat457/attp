@@ -117,6 +117,21 @@ function getPalmCenter(handLandmarks) {
   return averagePoints(points);
 }
 
+function buildRoundedRectPath(ctx, x, y, width, height, radius) {
+  const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + safeRadius, y);
+  ctx.lineTo(x + width - safeRadius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  ctx.lineTo(x + width, y + height - safeRadius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+  ctx.lineTo(x + safeRadius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  ctx.lineTo(x, y + safeRadius);
+  ctx.quadraticCurveTo(x, y, x + safeRadius, y);
+  ctx.closePath();
+}
+
 class SoundEngine {
   constructor() {
     this.audioContext = null;
@@ -747,6 +762,7 @@ class WarmUpApp {
     };
 
     this.bindEvents();
+    this.resizeCanvas();
   }
 
   bindEvents() {
@@ -770,6 +786,11 @@ class WarmUpApp {
 
     this.menuButton.addEventListener("click", () => {
       this.exitFullscreenGame();
+    });
+
+    window.addEventListener("resize", () => {
+      this.resizeCanvas();
+      this.render();
     });
   }
 
@@ -813,6 +834,18 @@ class WarmUpApp {
 
   updateLayoutMode() {
     document.body.classList.toggle("playing-mode", this.fullscreenGame);
+    this.resizeCanvas();
+  }
+
+  resizeCanvas() {
+    const isLandscapeFullscreen = this.fullscreenGame && window.innerWidth > window.innerHeight;
+    const targetWidth = isLandscapeFullscreen ? window.innerWidth : CANVAS_WIDTH;
+    const targetHeight = isLandscapeFullscreen ? window.innerHeight : CANVAS_HEIGHT;
+
+    if (this.canvas.width !== targetWidth || this.canvas.height !== targetHeight) {
+      this.canvas.width = targetWidth;
+      this.canvas.height = targetHeight;
+    }
   }
 
   updateStartButton() {
@@ -1013,8 +1046,7 @@ class WarmUpApp {
     ctx.fillStyle = "rgba(255,255,255,0.82)";
     ctx.strokeStyle = "rgba(70,55,40,0.1)";
     ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(22, this.canvas.height - 82, 188, 42, 14);
+    buildRoundedRectPath(ctx, 22, this.canvas.height - 82, 188, 42, 14);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = "#594532";
