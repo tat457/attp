@@ -93,6 +93,7 @@ button {
 }
 
 .game-button,
+.primary-button,
 .secondary-button {
   border: 0;
   border-radius: 18px;
@@ -119,6 +120,8 @@ button {
 
 .game-button:hover,
 .game-button:focus-visible,
+.primary-button:hover,
+.primary-button:focus-visible,
 .secondary-button:hover,
 .secondary-button:focus-visible {
   transform: translateY(-1px);
@@ -149,12 +152,39 @@ button {
   line-height: 1.45;
 }
 
+.primary-button,
 .secondary-button {
   width: 100%;
   padding: 14px 16px;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
   color: white;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, #3b8f60 0%, #206845 100%);
+  box-shadow: 0 16px 28px rgba(32, 104, 69, 0.24);
+  margin-bottom: 10px;
+}
+
+.primary-button.ready {
+  animation: pulse-start 1.4s ease-in-out infinite;
+}
+
+.secondary-button {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
   box-shadow: 0 16px 28px rgba(180, 76, 33, 0.22);
+}
+
+@keyframes pulse-start {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 16px 28px rgba(32, 104, 69, 0.24);
+  }
+
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 18px 34px rgba(32, 104, 69, 0.34);
+  }
 }
 
 .hint {
