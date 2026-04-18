@@ -6,6 +6,8 @@ const MIN_VISIBILITY = 0.55;
 const POSE = {
   LEFT_HIP: 23,
   RIGHT_HIP: 24,
+  LEFT_ANKLE: 27,
+  RIGHT_ANKLE: 28,
   LEFT_KNEE: 25,
   RIGHT_KNEE: 26,
   LEFT_HEEL: 29,
@@ -183,6 +185,9 @@ class WipeGame {
     this.completed = false;
     this.movementBudget = 0;
     this.lastPalm = null;
+    this.lastAxis = null;
+    this.lastDirection = 0;
+    this.reversalCharge = 0;
     this.clearTrail = [];
     this.sparkles = [];
     const random = createRandom(31);
@@ -257,6 +262,9 @@ class WipeGame {
 
     if (!palm) {
       this.lastPalm = null;
+      this.lastAxis = null;
+      this.lastDirection = 0;
+      this.reversalCharge = 0;
       return;
     }
 
@@ -266,6 +274,9 @@ class WipeGame {
 
     if (!insideGlass) {
       this.lastPalm = palm;
+      this.lastAxis = null;
+      this.lastDirection = 0;
+      this.reversalCharge = 0;
       return;
     }
 
@@ -273,11 +284,33 @@ class WipeGame {
       const dx = palm.x - this.lastPalm.x;
       const dy = palm.y - this.lastPalm.y;
       const distance = Math.hypot(dx, dy);
-      const energeticMotion = distance > 0.008 && (Math.abs(dx) > 0.005 || Math.abs(dy) > 0.005);
+      const dominantAxis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+      const axisAmount = dominantAxis === "x" ? dx : dy;
+      const orthogonalAmount = dominantAxis === "x" ? Math.abs(dy) : Math.abs(dx);
+      const energeticMotion =
+        distance > 0.012 &&
+        Math.abs(axisAmount) > 0.01 &&
+        orthogonalAmount < 0.04;
 
       if (energeticMotion) {
-        this.movementBudget += distance;
         this.clearAroundPalm(palm, distance);
+        const direction = axisAmount > 0 ? 1 : -1;
+
+        if (this.lastAxis === dominantAxis && this.lastDirection !== 0 && direction !== this.lastDirection) {
+          this.reversalCharge += Math.abs(axisAmount);
+        } else if (this.lastAxis === dominantAxis && direction === this.lastDirection) {
+          this.reversalCharge = Math.min(this.reversalCharge + Math.abs(axisAmount) * 0.2, 0.02);
+        } else {
+          this.reversalCharge = 0;
+        }
+
+        if (this.reversalCharge >= 0.018) {
+          this.movementBudget += this.reversalCharge * 1.5;
+          this.reversalCharge = 0;
+        }
+
+        this.lastAxis = dominantAxis;
+        this.lastDirection = direction;
       }
 
       while (this.movementBudget >= 0.028 && this.count < TARGET_REPS) {
@@ -403,8 +436,8 @@ class StepGame {
   }
 
   updateLeg(leg, lift, time) {
-    const isLifted = lift > 0.075;
-    const isLowered = lift < 0.04;
+    const isLifted = lift > 0.06;
+    const isLowered = lift < 0.045;
     const state = this.legState[leg];
     if (state === "down" && isLifted) {
       this.legState[leg] = "up";
@@ -425,13 +458,23 @@ class StepGame {
     const rightHip = getVisiblePoint(pose, POSE.RIGHT_HIP);
     const leftKnee = getVisiblePoint(pose, POSE.LEFT_KNEE);
     const rightKnee = getVisiblePoint(pose, POSE.RIGHT_KNEE);
+    const leftAnkle = getVisiblePoint(pose, POSE.LEFT_ANKLE);
+    const rightAnkle = getVisiblePoint(pose, POSE.RIGHT_ANKLE);
+    const leftHeel = getVisiblePoint(pose, POSE.LEFT_HEEL);
+    const rightHeel = getVisiblePoint(pose, POSE.RIGHT_HEEL);
 
-    if (!leftHip || !rightHip || !leftKnee || !rightKnee) {
+    if (
+      !leftHip || !rightHip || !leftKnee || !rightKnee ||
+      !leftAnkle || !rightAnkle || !leftHeel || !rightHeel
+    ) {
       return;
     }
 
-    const leftLift = leftHip.y - leftKnee.y;
-    const rightLift = rightHip.y - rightKnee.y;
+    const leftFootY = (leftAnkle.y + leftHeel.y) / 2;
+    const rightFootY = (rightAnkle.y + rightHeel.y) / 2;
+
+    const leftLift = (leftHip.y - leftKnee.y) + (leftFootY - leftKnee.y) * 0.42;
+    const rightLift = (rightHip.y - rightKnee.y) + (rightFootY - rightKnee.y) * 0.42;
     this.updateLeg("left", leftLift, time);
     this.updateLeg("right", rightLift, time);
   }
@@ -563,73 +606,50 @@ class JumpGame {
     }
   }
 
-  drawCharacter(ctx, x, y) {
-    ctx.fillStyle = "#18435a";
-    ctx.beginPath();
-    ctx.arc(x, y - 36, 16, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#18435a";
-    ctx.lineWidth = 7;
-    ctx.beginPath();
-    ctx.moveTo(x, y - 20);
-    ctx.lineTo(x, y + 24);
-    ctx.moveTo(x, y - 4);
-    ctx.lineTo(x - 18, y + 12);
-    ctx.moveTo(x, y - 4);
-    ctx.lineTo(x + 18, y - 16);
-    ctx.moveTo(x, y + 24);
-    ctx.lineTo(x - 18, y + 54);
-    ctx.moveTo(x, y + 24);
-    ctx.lineTo(x + 20, y + 50);
-    ctx.stroke();
-  }
-
   draw(ctx, width, height) {
-    const sky = ctx.createLinearGradient(0, 0, 0, height);
-    sky.addColorStop(0, "#c3e5ff");
-    sky.addColorStop(1, "#eff7ff");
-    ctx.fillStyle = sky;
+    const bg = ctx.createLinearGradient(0, 0, 0, height);
+    bg.addColorStop(0, "#e7eef8");
+    bg.addColorStop(1, "#c9d6ea");
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, width, height);
 
-    ctx.fillStyle = "#dcecff";
-    ctx.beginPath();
-    ctx.moveTo(0, height * 0.86);
-    ctx.lineTo(width * 0.22, height * 0.72);
-    ctx.lineTo(width * 0.78, height * 0.72);
-    ctx.lineTo(width, height * 0.86);
-    ctx.lineTo(width, height);
-    ctx.lineTo(0, height);
-    ctx.closePath();
-    ctx.fill();
-
     const stairCount = TARGET_REPS;
-    const startX = width * 0.18;
+    const startX = width * 0.1;
     const startY = height * 0.9;
-    const stairWidth = width * 0.0135;
-    const stairHeight = height * 0.0082;
+    const stairWidth = width * 0.0155;
+    const stairHeight = height * 0.012;
+    const stepDepth = width * 0.58;
 
     for (let i = 0; i < stairCount; i += 1) {
       const x = startX + i * stairWidth;
       const y = startY - i * stairHeight;
-      ctx.fillStyle = i < this.count ? "#efb25b" : "#d6d9e0";
-      ctx.fillRect(x, y, stairWidth + 2, stairHeight + 2);
-      ctx.strokeStyle = i < this.count ? "rgba(135, 79, 26, 0.26)" : "rgba(120, 130, 150, 0.18)";
-      ctx.strokeRect(x, y, stairWidth + 2, stairHeight + 2);
+
+      ctx.fillStyle = i < this.count ? "#f1b35d" : "#d8dde8";
+      ctx.fillRect(x, y, stepDepth, stairHeight + 1);
+
+      ctx.fillStyle = i < this.count ? "#cf8d3d" : "#b2bccd";
+      ctx.fillRect(x + stepDepth - 2, y, 18, stairHeight + 1);
+
+      ctx.strokeStyle = i < this.count ? "rgba(130, 77, 22, 0.22)" : "rgba(101, 112, 132, 0.14)";
+      ctx.strokeRect(x, y, stepDepth, stairHeight + 1);
     }
 
     const currentStep = Math.min(this.count, stairCount - 1);
-    const climberX = startX + currentStep * stairWidth + stairWidth * 0.5;
-    const climberY = startY - currentStep * stairHeight - 14;
-    this.drawCharacter(ctx, climberX, climberY);
-
-    ctx.fillStyle = "#ff7044";
-    ctx.fillRect(startX + stairCount * stairWidth + 26, startY - stairCount * stairHeight - 30, 6, 84);
+    const markerX = startX + currentStep * stairWidth + stepDepth * 0.38;
+    const markerY = startY - currentStep * stairHeight - stairHeight * 0.5;
+    ctx.fillStyle = "#214c65";
     ctx.beginPath();
-    ctx.moveTo(startX + stairCount * stairWidth + 32, startY - stairCount * stairHeight - 30);
-    ctx.lineTo(startX + stairCount * stairWidth - 36, startY - stairCount * stairHeight - 10);
-    ctx.lineTo(startX + stairCount * stairWidth + 32, startY - stairCount * stairHeight + 8);
-    ctx.closePath();
+    ctx.arc(markerX, markerY, 18, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(markerX - 9, markerY);
+    ctx.lineTo(markerX + 9, markerY);
+    ctx.moveTo(markerX, markerY - 9);
+    ctx.lineTo(markerX, markerY + 9);
+    ctx.stroke();
   }
 }
 
