@@ -608,48 +608,72 @@ class JumpGame {
 
   draw(ctx, width, height) {
     const bg = ctx.createLinearGradient(0, 0, 0, height);
-    bg.addColorStop(0, "#e7eef8");
-    bg.addColorStop(1, "#c9d6ea");
+    bg.addColorStop(0, "#e9eff8");
+    bg.addColorStop(1, "#cfd9e8");
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, width, height);
 
-    const stairCount = TARGET_REPS;
-    const startX = width * 0.1;
-    const startY = height * 0.9;
-    const stairWidth = width * 0.0155;
-    const stairHeight = height * 0.012;
-    const stepDepth = width * 0.58;
+    const currentStep = Math.min(this.count + 1, TARGET_REPS);
+    const topY = height * 0.18;
+    const topH = height * 0.14;
+    const faceY = topY + topH;
+    const faceH = height * 0.58;
 
-    for (let i = 0; i < stairCount; i += 1) {
-      const x = startX + i * stairWidth;
-      const y = startY - i * stairHeight;
+    ctx.fillStyle = "#bcc7d8";
+    ctx.fillRect(width * 0.04, topY - 18, width * 0.92, 10);
+    ctx.fillRect(width * 0.08, topY - 40, width * 0.84, 8);
 
-      ctx.fillStyle = i < this.count ? "#f1b35d" : "#d8dde8";
-      ctx.fillRect(x, y, stepDepth, stairHeight + 1);
+    const topGrad = ctx.createLinearGradient(0, topY, 0, faceY);
+    topGrad.addColorStop(0, "#fff2c9");
+    topGrad.addColorStop(1, "#f1bf65");
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, topY, width, topH);
 
-      ctx.fillStyle = i < this.count ? "#cf8d3d" : "#b2bccd";
-      ctx.fillRect(x + stepDepth - 2, y, 18, stairHeight + 1);
+    const faceGrad = ctx.createLinearGradient(0, faceY, 0, faceY + faceH);
+    faceGrad.addColorStop(0, "#d79643");
+    faceGrad.addColorStop(1, "#b97630");
+    ctx.fillStyle = faceGrad;
+    ctx.fillRect(0, faceY, width, faceH);
 
-      ctx.strokeStyle = i < this.count ? "rgba(130, 77, 22, 0.22)" : "rgba(101, 112, 132, 0.14)";
-      ctx.strokeRect(x, y, stepDepth, stairHeight + 1);
+    ctx.strokeStyle = "rgba(126, 75, 26, 0.25)";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(0, topY, width, topH);
+    ctx.strokeRect(0, faceY, width, faceH);
+
+    ctx.fillStyle = "rgba(255,255,255,0.34)";
+    ctx.fillRect(0, topY + 12, width, 10);
+
+    const remaining = TARGET_REPS - currentStep;
+    if (remaining > 0) {
+      const nextScale = 0.78;
+      const nextW = width * nextScale;
+      const nextX = (width - nextW) / 2;
+      const nextTopY = topY - 112;
+      const nextTopH = topH * 0.8;
+      const nextFaceH = 82;
+
+      ctx.fillStyle = "#f0cf8f";
+      ctx.fillRect(nextX, nextTopY, nextW, nextTopH);
+      ctx.fillStyle = "#c98a3c";
+      ctx.fillRect(nextX, nextTopY + nextTopH, nextW, nextFaceH);
+      ctx.strokeStyle = "rgba(126, 75, 26, 0.18)";
+      ctx.strokeRect(nextX, nextTopY, nextW, nextTopH + nextFaceH);
     }
 
-    const currentStep = Math.min(this.count, stairCount - 1);
-    const markerX = startX + currentStep * stairWidth + stepDepth * 0.38;
-    const markerY = startY - currentStep * stairHeight - stairHeight * 0.5;
-    ctx.fillStyle = "#214c65";
-    ctx.beginPath();
-    ctx.arc(markerX, markerY, 18, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = "#173d53";
+    ctx.font = "700 44px 'Hiragino Sans', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`${currentStep} 段目`, width / 2, faceY + faceH * 0.45);
 
-    ctx.strokeStyle = "rgba(255,255,255,0.8)";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(markerX - 9, markerY);
-    ctx.lineTo(markerX + 9, markerY);
-    ctx.moveTo(markerX, markerY - 9);
-    ctx.lineTo(markerX, markerY + 9);
-    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.font = "600 26px 'Hiragino Sans', sans-serif";
+    ctx.fillText("ジャンプすると次の段が前にせり上がります", width / 2, faceY + faceH * 0.62);
+
+    const progress = this.count / TARGET_REPS;
+    ctx.fillStyle = "rgba(23,61,83,0.12)";
+    ctx.fillRect(width * 0.14, height * 0.88, width * 0.72, 16);
+    ctx.fillStyle = "#173d53";
+    ctx.fillRect(width * 0.14, height * 0.88, width * 0.72 * progress, 16);
   }
 }
 
@@ -667,7 +691,9 @@ class WarmUpApp {
     this.hudTitle = document.getElementById("hudTitle");
     this.hudCount = document.getElementById("hudCount");
     this.progressBar = document.getElementById("progressBar");
+    this.startButton = document.getElementById("startButton");
     this.resetButton = document.getElementById("resetButton");
+    this.bgmAudio = document.getElementById("bgmAudio");
 
     this.games = {
       wipe: new WipeGame(),
@@ -678,6 +704,8 @@ class WarmUpApp {
     this.sound = new SoundEngine();
     this.soundEnabledNoticeShown = false;
     this.completionFlash = 0;
+    this.isGameStarted = false;
+    this.cameraReady = false;
 
     this.smoothedResults = {
       poseLandmarks: null,
@@ -690,44 +718,83 @@ class WarmUpApp {
 
   bindEvents() {
     this.gameButtons.forEach((button) => {
-      button.addEventListener("click", async () => {
-        await this.sound.enable();
+      button.addEventListener("click", () => {
         this.selectGame(button.dataset.game);
       });
     });
 
-    this.resetButton.addEventListener("click", async () => {
-      await this.sound.enable();
-      this.activeGame.reset();
-      this.completionFlash = 0;
-      this.updateHud();
-      this.setStatus(GAME_META[this.activeGame.type].status);
-      this.render();
+    this.startButton.addEventListener("click", async () => {
+      await this.startGame();
     });
 
-    window.addEventListener(
-      "pointerdown",
-      async () => {
-        await this.sound.enable();
-        if (!this.soundEnabledNoticeShown && this.sound.enabled) {
-          this.soundEnabledNoticeShown = true;
-          this.setStatus(`${GAME_META[this.activeGame.type].status} 音も有効になりました。`);
-        }
-      },
-      { once: true }
-    );
+    this.resetButton.addEventListener("click", async () => {
+      this.activeGame.reset();
+      this.isGameStarted = false;
+      this.completionFlash = 0;
+      this.updateHud();
+      this.updateStartButton();
+      this.stopBgm();
+      this.setStatus("リセットしました。スタートを押すとゲームが始まります。");
+      this.render();
+    });
   }
 
   selectGame(gameType) {
     this.activeGame = this.games[gameType];
     this.activeGame.reset();
+    this.isGameStarted = false;
+    this.stopBgm();
     this.gameButtons.forEach((button) => {
       button.classList.toggle("active", button.dataset.game === gameType);
     });
     this.completionFlash = 0;
     this.updateHud();
-    this.setStatus(GAME_META[gameType].status);
+    this.updateStartButton();
+    this.setStatus("スタートを押すとゲームが始まります。");
     this.render();
+  }
+
+  updateStartButton() {
+    this.startButton.textContent = this.isGameStarted ? "プレイ中" : "スタート";
+    this.startButton.classList.toggle("ready", !this.isGameStarted);
+  }
+
+  async startGame() {
+    if (!this.cameraReady) {
+      this.setStatus("カメラの準備ができるまで少し待ってください。");
+      return;
+    }
+
+    await this.sound.enable();
+    this.activeGame.reset();
+    this.isGameStarted = true;
+    this.completionFlash = 0;
+    this.updateHud();
+    this.updateStartButton();
+    await this.playBgm();
+    this.setStatus(`${GAME_META[this.activeGame.type].status} ゲーム開始です。`);
+    this.render();
+  }
+
+  async playBgm() {
+    if (!this.bgmAudio) {
+      return;
+    }
+    this.bgmAudio.currentTime = 0;
+    try {
+      await this.bgmAudio.play();
+    } catch (error) {
+      console.error(error);
+      this.setStatus("fitnes.mp3 を再生できませんでした。ファイル配置を確認してください。");
+    }
+  }
+
+  stopBgm() {
+    if (!this.bgmAudio) {
+      return;
+    }
+    this.bgmAudio.pause();
+    this.bgmAudio.currentTime = 0;
   }
 
   updateHud() {
@@ -748,6 +815,7 @@ class WarmUpApp {
 
   async start() {
     this.updateHud();
+    this.updateStartButton();
     this.render();
     this.setStatus("カメラを初期化しています…");
 
@@ -777,7 +845,8 @@ class WarmUpApp {
         },
       });
       await this.camera.start();
-      this.setStatus(`${GAME_META[this.activeGame.type].status} 画面にはゲームだけを表示しています。`);
+      this.cameraReady = true;
+      this.setStatus("スタートを押すとゲームが始まります。画面にはゲームだけを表示しています。");
     } catch (error) {
       console.error(error);
       this.setStatus("カメラを開始できませんでした。HTTPS または localhost で開いてください。");
@@ -807,6 +876,11 @@ class WarmUpApp {
       rightHandLandmarks: this.smoothedResults.rightHandLandmarks,
     };
 
+    if (!this.isGameStarted) {
+      this.render();
+      return;
+    }
+
     const beforeCount = this.activeGame.count;
     const wasCompleted = this.activeGame.completed;
     this.activeGame.update(processed, performance.now());
@@ -823,7 +897,10 @@ class WarmUpApp {
 
     if (!wasCompleted && this.activeGame.completed) {
       this.sound.playSuccess();
+      this.stopBgm();
+      this.isGameStarted = false;
       this.completionFlash = 1;
+      this.updateStartButton();
       this.setStatus(`${GAME_META[this.activeGame.type].title} クリア！ もう一度遊ぶにはリセットしてください。`);
     }
 
@@ -839,9 +916,27 @@ class WarmUpApp {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.activeGame.draw(this.ctx, this.canvas.width, this.canvas.height);
     this.drawTrackingHint();
+    if (!this.isGameStarted && !this.activeGame.completed) {
+      this.drawStartOverlay();
+    }
     if (this.activeGame.completed) {
       this.drawCompletionOverlay();
     }
+  }
+
+  drawStartOverlay() {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = "rgba(22, 32, 48, 0.34)";
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.fillStyle = "rgba(255,255,255,0.96)";
+    ctx.font = "700 62px 'Hiragino Sans', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("START", this.canvas.width / 2, this.canvas.height / 2 - 10);
+    ctx.font = "600 26px 'Hiragino Sans', sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillText("左のスタートボタンを押すと fitnes.mp3 と一緒に始まります", this.canvas.width / 2, this.canvas.height / 2 + 42);
+    ctx.restore();
   }
 
   drawTrackingHint() {
