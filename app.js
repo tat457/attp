@@ -834,13 +834,15 @@ class WarmUpApp {
 
   updateLayoutMode() {
     document.body.classList.toggle("playing-mode", this.fullscreenGame);
-    this.resizeCanvas();
+    requestAnimationFrame(() => {
+      this.resizeCanvas();
+      this.render();
+    });
   }
 
   resizeCanvas() {
-    const isLandscapeFullscreen = this.fullscreenGame && window.innerWidth > window.innerHeight;
-    const targetWidth = isLandscapeFullscreen ? window.innerWidth : CANVAS_WIDTH;
-    const targetHeight = isLandscapeFullscreen ? window.innerHeight : CANVAS_HEIGHT;
+    const targetWidth = this.fullscreenGame ? window.innerWidth : CANVAS_WIDTH;
+    const targetHeight = this.fullscreenGame ? window.innerHeight : CANVAS_HEIGHT;
 
     if (this.canvas.width !== targetWidth || this.canvas.height !== targetHeight) {
       this.canvas.width = targetWidth;
@@ -1009,14 +1011,19 @@ class WarmUpApp {
   }
 
   render() {
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.activeGame.draw(this.ctx, this.canvas.width, this.canvas.height);
-    this.drawTrackingHint();
-    if (!this.isGameStarted && !this.activeGame.completed) {
-      this.drawStartOverlay();
-    }
-    if (this.activeGame.completed) {
-      this.drawCompletionOverlay();
+    try {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      this.activeGame.draw(this.ctx, this.canvas.width, this.canvas.height);
+      this.drawTrackingHint();
+      if (!this.isGameStarted && !this.activeGame.completed) {
+        this.drawStartOverlay();
+      }
+      if (this.activeGame.completed) {
+        this.drawCompletionOverlay();
+      }
+    } catch (error) {
+      console.error(error);
+      this.setStatus("描画でエラーが出ました。リロードして再度お試しください。");
     }
   }
 
