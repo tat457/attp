@@ -190,6 +190,7 @@ class WipeGame {
     this.reversalCharge = 0;
     this.clearTrail = [];
     this.sparkles = [];
+    this.shineOffset = 0;
     const random = createRandom(31);
     this.dirtSpots = Array.from({ length: 260 }, () => ({
       x: 0.19 + random() * 0.62,
@@ -240,6 +241,7 @@ class WipeGame {
   }
 
   update(results) {
+    this.shineOffset += 0.014;
     if (this.completed) {
       this.clearTrail.forEach((trail) => {
         trail.life *= 0.94;
@@ -387,6 +389,14 @@ class WipeGame {
       ctx.lineTo(x, y + 8);
       ctx.stroke();
     });
+
+    const streakX = frameX + ((Math.sin(this.shineOffset) + 1) * 0.5) * frameW;
+    const sheen = ctx.createLinearGradient(streakX - 70, frameY, streakX + 70, frameY + frameH);
+    sheen.addColorStop(0, "rgba(255,255,255,0)");
+    sheen.addColorStop(0.5, "rgba(255,255,255,0.18)");
+    sheen.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = sheen;
+    ctx.fillRect(frameX, frameY, frameW, frameH);
   }
 }
 
@@ -405,6 +415,7 @@ class StepGame {
       left: "down",
       right: "down",
     };
+    this.snowDrift = 0;
     const random = createRandom(77);
     this.footprints = Array.from({ length: TARGET_REPS }, (_, index) => {
       const lane = index % 2 === 0 ? -1 : 1;
@@ -450,6 +461,7 @@ class StepGame {
   }
 
   update(results, time) {
+    this.snowDrift += 0.011;
     if (this.completed) {
       return;
     }
@@ -515,6 +527,15 @@ class StepGame {
       }
     }
 
+    for (let i = 0; i < 28; i += 1) {
+      const x = ((i * 57) + this.snowDrift * 210 + (i % 4) * 16) % (width + 40) - 20;
+      const y = 90 + (i * 21) % (height - 130);
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(255,255,255,${0.2 + (i % 3) * 0.08})`;
+      ctx.arc(x, y, 2 + (i % 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     this.footprints.slice(0, this.count).forEach((foot) => {
       this.drawFootprint(ctx, foot.x * width, foot.y * height, foot.rotation, foot.side, 0.88);
     });
@@ -548,6 +569,7 @@ class JumpGame {
     this.baselineHipY = null;
     this.lastJumpAt = 0;
     this.peakMetric = 0;
+    this.stepPulse = 0;
   }
 
   update(results, time) {
@@ -594,6 +616,7 @@ class JumpGame {
         if (this.peakMetric > 0.07) {
           this.count += 1;
           this.lastJumpAt = time;
+          this.stepPulse = 1;
         }
         this.state = "grounded";
         this.peakMetric = 0;
@@ -607,6 +630,7 @@ class JumpGame {
   }
 
   draw(ctx, width, height) {
+    this.stepPulse *= 0.9;
     const bg = ctx.createLinearGradient(0, 0, 0, height);
     bg.addColorStop(0, "#e9eff8");
     bg.addColorStop(1, "#cfd9e8");
@@ -614,7 +638,9 @@ class JumpGame {
     ctx.fillRect(0, 0, width, height);
 
     const currentStep = Math.min(this.count + 1, TARGET_REPS);
-    const topY = height * 0.18;
+    const pulseLift = this.stepPulse * 24;
+    const pulseGlow = this.stepPulse * 0.22;
+    const topY = height * 0.18 - pulseLift;
     const topH = height * 0.14;
     const faceY = topY + topH;
     const faceH = height * 0.58;
@@ -622,6 +648,9 @@ class JumpGame {
     ctx.fillStyle = "#bcc7d8";
     ctx.fillRect(width * 0.04, topY - 18, width * 0.92, 10);
     ctx.fillRect(width * 0.08, topY - 40, width * 0.84, 8);
+
+    ctx.shadowColor = `rgba(255, 207, 122, ${pulseGlow})`;
+    ctx.shadowBlur = 42 + this.stepPulse * 26;
 
     const topGrad = ctx.createLinearGradient(0, topY, 0, faceY);
     topGrad.addColorStop(0, "#fff2c9");
@@ -634,6 +663,7 @@ class JumpGame {
     faceGrad.addColorStop(1, "#b97630");
     ctx.fillStyle = faceGrad;
     ctx.fillRect(0, faceY, width, faceH);
+    ctx.shadowBlur = 0;
 
     ctx.strokeStyle = "rgba(126, 75, 26, 0.25)";
     ctx.lineWidth = 4;
@@ -648,7 +678,7 @@ class JumpGame {
       const nextScale = 0.78;
       const nextW = width * nextScale;
       const nextX = (width - nextW) / 2;
-      const nextTopY = topY - 112;
+      const nextTopY = topY - 112 - pulseLift * 0.35;
       const nextTopH = topH * 0.8;
       const nextFaceH = 82;
 
@@ -693,6 +723,8 @@ class WarmUpApp {
     this.progressBar = document.getElementById("progressBar");
     this.startButton = document.getElementById("startButton");
     this.resetButton = document.getElementById("resetButton");
+    this.menuButton = document.getElementById("menuButton");
+    this.stageResetButton = document.getElementById("stageResetButton");
     this.bgmAudio = document.getElementById("bgmAudio");
 
     this.games = {
@@ -706,6 +738,7 @@ class WarmUpApp {
     this.completionFlash = 0;
     this.isGameStarted = false;
     this.cameraReady = false;
+    this.fullscreenGame = false;
 
     this.smoothedResults = {
       poseLandmarks: null,
@@ -728,14 +761,15 @@ class WarmUpApp {
     });
 
     this.resetButton.addEventListener("click", async () => {
-      this.activeGame.reset();
-      this.isGameStarted = false;
-      this.completionFlash = 0;
-      this.updateHud();
-      this.updateStartButton();
-      this.stopBgm();
-      this.setStatus("リセットしました。スタートを押すとゲームが始まります。");
-      this.render();
+      this.resetGame();
+    });
+
+    this.stageResetButton.addEventListener("click", () => {
+      this.resetGame();
+    });
+
+    this.menuButton.addEventListener("click", () => {
+      this.exitFullscreenGame();
     });
   }
 
@@ -750,8 +784,35 @@ class WarmUpApp {
     this.completionFlash = 0;
     this.updateHud();
     this.updateStartButton();
+    this.updateLayoutMode();
     this.setStatus("スタートを押すとゲームが始まります。");
     this.render();
+  }
+
+  resetGame() {
+    this.activeGame.reset();
+    this.isGameStarted = false;
+    this.completionFlash = 0;
+    this.updateHud();
+    this.updateStartButton();
+    this.stopBgm();
+    this.exitFullscreenGame();
+    this.setStatus("リセットしました。スタートを押すとゲームが始まります。");
+    this.render();
+  }
+
+  enterFullscreenGame() {
+    this.fullscreenGame = true;
+    this.updateLayoutMode();
+  }
+
+  exitFullscreenGame() {
+    this.fullscreenGame = false;
+    this.updateLayoutMode();
+  }
+
+  updateLayoutMode() {
+    document.body.classList.toggle("playing-mode", this.fullscreenGame);
   }
 
   updateStartButton() {
@@ -771,6 +832,7 @@ class WarmUpApp {
     this.completionFlash = 0;
     this.updateHud();
     this.updateStartButton();
+    this.enterFullscreenGame();
     await this.playBgm();
     this.setStatus(`${GAME_META[this.activeGame.type].status} ゲーム開始です。`);
     this.render();
@@ -901,6 +963,7 @@ class WarmUpApp {
       this.isGameStarted = false;
       this.completionFlash = 1;
       this.updateStartButton();
+      this.exitFullscreenGame();
       this.setStatus(`${GAME_META[this.activeGame.type].title} クリア！ もう一度遊ぶにはリセットしてください。`);
     }
 
